@@ -7,11 +7,9 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
     <main class="weather-card">
         <h2>Погода в <span id="location">...</span></h2>
         <p class="time">Данные на: <span id="obsTime">...</span></p>
-
         <div class="weather-grid">
             <div class="grid-item">
                 <strong>Температура:</strong>
@@ -38,17 +36,22 @@
                 <span id="clouds">...</span>
             </div>
         </div>
-
         <h3>Исходная сводка (RAW):</h3>
         <code id="rawMetar">Загрузка...</code>
     </main>
 
     <script>
-        // Эта функция выполнится, как только страница загрузится
+        // Словарь для "перевода" кодов облачности
+        const CLOUD_TRANSLATIONS = {
+            FEW: 'Незначительная',
+            SCT: 'Рассеянная',
+            BKN: 'Сплошная',
+            OVC: 'Облачно',
+        };
+
         document.addEventListener('DOMContentLoaded', fetchMetar);
 
         async function fetchMetar() {
-            // Выбираем все элементы, куда будем вставлять данные
             const elements = {
                 location: document.getElementById('location'),
                 obsTime: document.getElementById('obsTime'),
@@ -62,49 +65,58 @@
             };
 
             try {
-                // 1. Делаем запрос к НАШЕЙ бессерверной функции
-                // Мы не пишем https://... , Vercel сам поймет путь
                 const response = await fetch('/api/metar');
-                
                 if (!response.ok) {
                     throw new Error('Ошибка сети при загрузке данных');
                 }
                 
-                // 2. Получаем JSON от /api/metar
+                // 2. Получаем JSON, который сгенерировал metar-parser
                 const data = await response.json();
 
-                // 3. Обновляем HTML на странице
+                // 3. Обновляем HTML, используя НОВУЮ структуру данных
+                
+                // data.station вместо data.name
+                elements.location.textContent = data.station; 
+                
+                // data.time - это объект {day, hour, minute}
+                const time = data.time;
+                // Дополняем нулями, если час/минута < 10
+                const hour = String(time.hour).padStart(2, '0');
+                const minute = String(time.minute).padStart(2, '0');
+                elements.obsTime.textContent = `День ${time.day}, ${hour}:${minute} UTC`;
 
-                elements.location.textContent = data.name;
+                // data.temperature вместо data.temp
+                elements.temp.textContent = `${data.temperature}°C`;
+                // data.dewpoint вместо data.dewp
+                elements.dewp.textContent = `${data.dewpoint}°C`;
                 
-                // data.obsTime - это секунды (Unix time). Конвертируем в миллисекунды для Date()
-                const obsDate = new Date(data.obsTime * 1000);
-                // Форматируем в понятную дату и время
-                elements.obsTime.textContent = obsDate.toLocaleString('ru-RU', { timeZone: 'UTC' }) + ' UTC';
+                // data.wind - это объект { direction, speed, unit }
+                const wind = data.wind;
+                elements.wind.textContent = `${wind.direction}° / ${wind.speed} ${wind.unit}`;
+                
+                // data.visibility - это объект { value, unit }
+                const vis = data.visibility;
+                elements.visib.textContent = `${vis.value}${vis.unit}`; // (например, 9999M)
+                
+                // data.altimeter - это объект { value, unit }
+                const altim = data.altimeter;
+                elements.altim.textContent = `${altim.value} ${altim.unit}`; // (например, 1032 hPa)
 
-                elements.temp.textContent = `${data.temp}°C`;
-                elements.dewp.textContent = `${data.dewp}°C`;
-                
-                // JSON дает wdir (направление) и wspd (скорость в узлах)
-                elements.wind.textContent = `${data.wdir}° / ${data.wspd} KTS`;
-                
-                // Видимость в "Statute Miles"
-                elements.visib.textContent = `${data.visib} SM`; 
-                
-                // Давление в гектопаскалях
-                elements.altim.textContent = `${data.altim} hPa`; 
-
-                // Обрабатываем массив облачности
+                // data.clouds - массив. Эта логика стала даже лучше
                 if (data.clouds && data.clouds.length > 0) {
-                    // map() превращает массив объектов в массив строк
                     elements.clouds.textContent = data.clouds
-                        .map(c => `${c.cover} (рассеянная/сплошная) @ ${c.base} футов`)
-                        .join(', '); // Соединяем строки, если облаков несколько
+                        .map(c => {
+                            // Используем наш словарь для перевода
+                            const coverText = CLOUD_TRANSLATIONS[c.cover] || c.cover;
+                            return `${coverText} @ ${c.base} футов`;
+                        })
+                        .join(', ');
                 } else {
                     elements.clouds.textContent = 'Нет значимой облачности';
                 }
 
-                elements.rawMetar.textContent = data.rawOb;
+                // data.raw вместо data.rawOb
+                elements.rawMetar.textContent = data.raw;
 
             } catch (error) {
                 console.error('Ошибка при получении METAR:', error);
@@ -112,5 +124,5 @@
             }
         }
     </script>
-</body>
+    </body>
 </html>
