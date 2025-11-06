@@ -7,9 +7,11 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
     <main class="weather-card">
         <h2>Погода в <span id="location">...</span></h2>
         <p class="time">Данные на: <span id="obsTime">...</span></p>
+
         <div class="weather-grid">
             <div class="grid-item">
                 <strong>Температура:</strong>
@@ -36,22 +38,26 @@
                 <span id="clouds">...</span>
             </div>
         </div>
+
         <h3>Исходная сводка (RAW):</h3>
         <code id="rawMetar">Загрузка...</code>
     </main>
 
     <script>
-        // Словарь для "перевода" кодов облачности
+        // Словарь для "перевода" кодов облачности для пользователя
         const CLOUD_TRANSLATIONS = {
             FEW: 'Незначительная',
             SCT: 'Рассеянная',
             BKN: 'Сплошная',
             OVC: 'Облачно',
+            NSC: 'Нет значимых облаков',
+            NCD: 'Нет облаков',
         };
 
         document.addEventListener('DOMContentLoaded', fetchMetar);
 
         async function fetchMetar() {
+            // Объявляем ссылки на DOM-элементы
             const elements = {
                 location: document.getElementById('location'),
                 obsTime: document.getElementById('obsTime'),
@@ -65,64 +71,76 @@
             };
 
             try {
+                // Запрос к нашей Vercel Serverless Function, которая парсит METAR
                 const response = await fetch('/api/metar');
+                
                 if (!response.ok) {
                     throw new Error('Ошибка сети при загрузке данных');
                 }
                 
-                // 2. Получаем JSON, который сгенерировал metar-parser
+                // Получаем JSON, который сгенерировал metar-parser
                 const data = await response.json();
 
-                // 3. Обновляем HTML, используя НОВУЮ структуру данных
+                // 1. СТАТИЧНЫЕ ПОЛЯ
+                elements.location.textContent = data.station || 'N/A'; 
                 
-                // data.station вместо data.name
-                elements.location.textContent = data.station; 
-                
-                // data.time - это объект {day, hour, minute}
-                const time = data.time;
-                // Дополняем нулями, если час/минута < 10
-                const hour = String(time.hour).padStart(2, '0');
-                const minute = String(time.minute).padStart(2, '0');
-                elements.obsTime.textContent = `День ${time.day}, ${hour}:${minute} UTC`;
+                // Время (структура: { day, hour, minute })
+                const time = data.time || {};
+                const hour = String(time.hour || '??').padStart(2, '0');
+                const minute = String(time.minute || '??').padStart(2, '0');
+                elements.obsTime.textContent = `День ${time.day || '?'}, ${hour}:${minute} UTC`;
 
-                // data.temperature вместо data.temp
-                elements.temp.textContent = `${data.temperature}°C`;
-                // data.dewpoint вместо data.dewp
-                elements.dewp.textContent = `${data.dewpoint}°C`;
+                // 2. ПОЛЯ С ОБЪЕКТАМИ ЗНАЧЕНИЙ
                 
-                // data.wind - это объект { direction, speed, unit }
-                const wind = data.wind;
-                elements.wind.textContent = `${wind.direction}° / ${wind.speed} ${wind.unit}`;
+                // Температура и Точка росы: проверяем, объект это (с полем value) или прямое значение
+                const tempValue = data.temperature.value !== undefined ? data.temperature.value : data.temperature;
+                const dewpValue = data.dewpoint.value !== undefined ? data.dewpoint.value : data.dewpoint;
                 
-                // data.visibility - это объект { value, unit }
-                const vis = data.visibility;
-                elements.visib.textContent = `${vis.value}${vis.unit}`; // (например, 9999M)
+                elements.temp.textContent = `${tempValue}°C`;
+                elements.dewp.textContent = `${dewpValue}°C`;
                 
-                // data.altimeter - это объект { value, unit }
-                const altim = data.altimeter;
-                elements.altim.textContent = `${altim.value} ${altim.unit}`; // (например, 1032 hPa)
-
-                // data.clouds - массив. Эта логика стала даже лучше
-                if (data.clouds && data.clouds.length > 0) {
-                    elements.clouds.textContent = data.clouds
-                        .map(c => {
-                            // Используем наш словарь для перевода
-                            const coverText = CLOUD_TRANSLATIONS[c.cover] || c.cover;
-                            return `${coverText} @ ${c.base} футов`;
-                        })
-                        .join(', ');
+                // Ветер (структура: { direction, speed, unit })
+                const wind = data.wind || {};
+                if (wind.direction === 0 && wind.speed === 0) {
+                     elements.wind.textContent = 'Штиль (Calm)';
+                } else if (wind.direction === 'VRB') {
+                     elements.wind.textContent = `Переменный / ${wind.speed || '??'} ${wind.unit || ''}`;
                 } else {
-                    elements.clouds.textContent = 'Нет значимой облачности';
+                     elements.wind.textContent = `${wind.direction}° / ${wind.speed || '??'} ${wind.unit || ''}`;
                 }
 
-                // data.raw вместо data.rawOb
+                // Видимость (структура: { value, unit })
+                const vis = data.visibility || {};
+                elements.visib.textContent = `${vis.value || 'N/A'}${vis.unit || ''}`; 
+                
+                // Давление (структура: { value, unit })
+                const altim = data.altimeter || {};
+                elements.altim.textContent = `${altim.value || 'N/A'} ${altim.unit || ''}`;
+
+                // 3. ОБЛАЧНОСТЬ (Обработка массива)
+                if (data.clouds && data.clouds.length > 0 && data.clouds[0].cover !== 'SKC' && data.clouds[0].cover !== 'CLR') {
+                    elements.clouds.textContent = data.clouds
+                        .map(c => {
+                            const coverText = CLOUD_TRANSLATIONS[c.cover] || c.cover;
+                            // База облаков (base) может быть undefined
+                            const baseText = c.base !== undefined ? ` @ ${c.base} футов` : ''; 
+                            return `${coverText}${baseText}`;
+                        })
+                        .join(', ');
+                } else if (data.clouds && (data.clouds[0].cover === 'SKC' || data.clouds[0].cover === 'CLR')) {
+                     elements.clouds.textContent = 'Ясное небо (SKC/CLR)';
+                } else {
+                    elements.clouds.textContent = 'Данные об облачности отсутствуют';
+                }
+
+                // RAW (исходная сводка)
                 elements.rawMetar.textContent = data.raw;
 
             } catch (error) {
                 console.error('Ошибка при получении METAR:', error);
-                document.querySelector('.weather-card').innerHTML = '<h2>Ошибка загрузки данных о погоде.</h2><p>Пожалуйста, попробуйте обновить страницу.</p>';
+                document.querySelector('.weather-card').innerHTML = '<h2>Ошибка загрузки данных о погоде.</h2><p>Пожалуйста, проверьте консоль Vercel на предмет ошибок.</p>';
             }
         }
     </script>
-    </body>
+</body>
 </html>
