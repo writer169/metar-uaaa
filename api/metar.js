@@ -1,4 +1,4 @@
-// 1. Импортируем модуль 'metar-parser' и корректно извлекаем функцию 'parse'.
+// 1. Импортиуем модуль 'metar-parser' и корректно извлекаем функцию 'parse'.
 // Это исправляет ошибку CommonJS/ES Modules.
 import pkg from 'metar-parser';
 const { parse } = pkg;
