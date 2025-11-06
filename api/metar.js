@@ -10,7 +10,7 @@ const airportICAO = 'UAAA';
 export default async function handler(request, response) {
 
   // URL для запроса JSON-формата
-  const url = `https://aviationweather.gov/api/data/metar?ids=${airportICAA}&format=json`;
+  const url = `https://aviationweather.gov/api/data/metar?ids=${airportICAO}&format=json`;
 
   try {
     // 1. Запрашиваем данные с сервера Vercel
