@@ -4,6 +4,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "metar-parser": "^1.1.0"
+    "metar-parser": "^1.0.0"
   }
 }
